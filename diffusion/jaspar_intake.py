@@ -5,7 +5,7 @@ num_files = 1704
 height = 4
 width = 40
 trials_per_site = 20
-binding_sites_abs_path = "C:/Users/kunal/Documents/Boeke/diffusion/bindingsites"
+binding_sites_abs_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/bindingsites"
 
 
 def read_jaspar(file_path):
@@ -60,9 +60,9 @@ for i, file_name in enumerate(os.listdir(binding_sites_abs_path)):
         padded_outcomes = padding(outcomes)
         sequences = generate_sequences(padded_outcomes)
         trial_sums = trials_per_site * i
-        save_data[trial_sums:(trial_sums + trials_per_site), height, width] = sequences
+        save_data[trial_sums:(trial_sums + trials_per_site), :, :] = sequences
         save_labels[trial_sums:(trial_sums + trials_per_site)] = i
 
-
-        
-
+numpy_abs_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/"
+np.save(os.path.join(numpy_abs_path, "save_data.npy"), save_data)
+np.save(os.path.join(numpy_abs_path, "save_labels.npy"), save_labels)
