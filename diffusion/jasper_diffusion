@@ -2,7 +2,6 @@ import math
 from inspect import isfunction
 from functools import partial
 
-# %matplotlib inline
 import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 from einops import rearrange, reduce
@@ -207,7 +206,6 @@ class PreNorm(nn.Module):
         x = self.norm(x)
         return self.fn(x)
 
-#change res to tuple
 class ClassConditioning(nn.Module):
     def __init__(self, in_dims, out_dims, num_channels=1):
         super().__init__()
@@ -220,7 +218,6 @@ class ClassConditioning(nn.Module):
     def forward(self, x):
         return self.block(x)
 
-#Change to tuple
 class Unet(nn.Module):
     def __init__(
         self,
@@ -237,24 +234,20 @@ class Unet(nn.Module):
     ):
         super().__init__()
 
-        # determine dimensions
-        self.channels = channels #1
+        self.channels = channels
         self.self_condition = self_condition
-        input_channels = channels * (2 if self_condition else 1) #1
-
-        self.class_embeddings = nn.Embedding(num_classes, class_embed_dim) # 10 -> 64
+        input_channels = channels * (2 if self_condition else 1)
 
         self.filters = default(filters, int(math.sqrt(dim[0] * dim[1])))
-        init_filters = default(init_filters, self.filters) # (4, 200)
-        self.init_conv = nn.Conv2d(input_channels, init_filters, 1, padding=0) # int(math.sqrt(4, 200)) instead of init_dim
+        init_filters = default(init_filters, self.filters)
 
-        dims = [init_filters, *map(lambda m: self.filters * m, filter_mults)] # int(math.sqrt(4, 200)) instead of init_dim and dim
+        dims = [init_filters, *map(lambda m: self.filters * m, filter_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
 
         block_klass = partial(ResnetBlock, groups=resnet_block_groups)
 
         # time embeddings
-        time_dim = self.filters * 4 #int(math.sqrt(4, 200)) * 4
+        time_dim = self.filters * 4
 
         self.time_mlp = nn.Sequential(
             SinusoidalPositionEmbeddings(self.filters),
@@ -263,11 +256,18 @@ class Unet(nn.Module):
             nn.Linear(time_dim, time_dim),
         )
 
+        # class embeddings
+        self.class_embeddings = nn.Embedding(num_classes, class_embed_dim)
+
+        # initial convolusion
+        self.init_conv = nn.Conv2d(input_channels, init_filters, 1, padding=0)
+
         # layers
         self.downs = nn.ModuleList([])
         self.ups = nn.ModuleList([])
         num_resolutions = len(in_out)
 
+        # downsample
         now_res = dim
 
         for ind, (dim_in, dim_out) in enumerate(in_out):
@@ -289,12 +289,14 @@ class Unet(nn.Module):
 
             if not is_last: now_res = tuple(max(res_dim // 2, 1) for res_dim in now_res)
 
+        # self attention
         mid_dim = dims[-1]
         self.mid_class_conditioning = ClassConditioning(class_embed_dim, now_res)
         self.mid_block1 = block_klass(mid_dim + 1, mid_dim, time_emb_dim=time_dim)
         self.mid_attn = Residual(PreNorm(mid_dim, Attention(mid_dim)))
         self.mid_block2 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim)
 
+        # up sample
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out)):
             is_last = ind == (len(in_out) - 1)
 
@@ -315,7 +317,6 @@ class Unet(nn.Module):
             now_res = tuple(res_dim * 2 for res_dim in now_res)
 
         self.out_dim = default(out_filters, channels)
-
         self.final_res_block = block_klass(self.filters * 2, self.filters, time_emb_dim=time_dim)
         self.final_conv = nn.Conv2d(self.filters, self.out_dim, 1)
 
