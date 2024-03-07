@@ -35,7 +35,7 @@ def read_file(file_path):
             # Convert the sequence using dictionary mapping
             converted_sequence = np.array([letters_to_numbers[letter] for letter in sequence_array])
 
-            one_hot_encoding = np.squeeze(np.eye(6)[converted_sequence]).astype('int8')
+            one_hot_encoding = np.squeeze(np.eye(5)[converted_sequence]).astype('int8')
             one_hot_encoding = np.delete(one_hot_encoding, [0], axis=1)
             one_hot_encoding = np.matrix.transpose(one_hot_encoding)
             padding = ((0, 0), (0, max(0, max_sequence_length - one_hot_encoding.shape[1])))
