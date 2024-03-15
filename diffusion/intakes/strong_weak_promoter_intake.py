@@ -19,8 +19,11 @@ promoter_abs_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/strong_
 non_promoter_abs_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/strong_weak_promoters/non_promoter.txt"
 numpy_abs_path = "C:/Users/kunal/Documents/npy_data/"
      
-def one_hot_encode(seq):
-    return np.array([one_hot_encode_mapping[i] for i in seq])
+def one_hot_encode(seq, total_len):
+    encoded = [one_hot_encode_mapping[i] for i in seq]
+    length = len(encoded)
+    for _ in range(total_len - length): encoded.append([0, 0, 0, 0])
+    return np.array(encoded)
 
 save_data = []
 save_labels = []
@@ -40,7 +43,7 @@ with open(promoter_abs_path, 'r') as file:
             if(not placed): continue
             sequence = Seq(line.strip())
             if(not forward):sequence = sequence.reverse_complement()
-            save_data.append(one_hot_encode(str(sequence)).T)
+            save_data.append(one_hot_encode(str(sequence), 88).T)
             save_labels.append(classification)
 
 print(save_data[0][:, :10])
@@ -49,13 +52,13 @@ with open(non_promoter_abs_path, 'r') as file:
     lines = file.readlines()
     for i, line in enumerate(lines):
         if(i == 1632): break
-        save_data.append(one_hot_encode(line.strip()).T)
+        save_data.append(one_hot_encode(line.strip(), 88).T)
         save_labels.append(0)
 
 save_data = np.array(save_data)
 save_labels = np.array(save_labels)
-np.save(os.path.join(numpy_abs_path, "save_data_promoter.npy"), save_data)
-np.save(os.path.join(numpy_abs_path, "save_labels_promoter.npy"), save_labels)
+np.save(os.path.join(numpy_abs_path, "save_data_promoter_strong_weak.npy"), save_data)
+np.save(os.path.join(numpy_abs_path, "save_labels_promoter_strong_weak.npy"), save_labels)
 
 print(save_data.shape)
 print(save_labels.shape)
