@@ -13,11 +13,10 @@ file_name_to_class_dict = {
 }
 
 one_hot_encode_mapping = {
-    'A': [1, 0, 0, 0, 0, 0, 0, 0],
-    'C': [0, 1, 0, 0, 0, 0, 0, 0],
-    'G': [0, 0, 1, 0, 0, 0, 0, 0],
-    'T': [0, 0, 0, 1, 0, 0, 0, 0],
-    'N': [0, 0, 0, 0, 1, 0, 0, 0]
+    'A': [1, 0, 0, 0],
+    'C': [0, 1, 0, 0],
+    'G': [0, 0, 1, 0],
+    'T': [0, 0, 0, 1],
 }
 
 promoter_abs_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/promoters"
@@ -48,12 +47,13 @@ for i, file_name in enumerate(os.listdir(promoter_abs_path)):
     file_path = os.path.join(promoter_abs_path, file_name)
     sequences = read_sequences(file_path)
     for sequence in sequences:
+        if("N" in sequence): continue
         encoding = one_hot_encode(sequence)
         if encoding.shape != (600, 4):continue
-        save_data.append(encoding)
+        save_data.append(encoding.T)
         save_labels.append(label)
 
 save_data = np.array(save_data)
 save_labels = np.array(save_labels)
-np.save(os.path.join(numpy_abs_path, "save_data_promoter_alt_mapping.npy"), save_data)
-np.save(os.path.join(numpy_abs_path, "save_labels_promoter_alt_mapping.npy"), save_labels)
+np.save(os.path.join(numpy_abs_path, "save_data_promoter.npy"), save_data)
+np.save(os.path.join(numpy_abs_path, "save_labels_promoter.npy"), save_labels)
