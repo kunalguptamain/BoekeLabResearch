@@ -12,7 +12,7 @@ factor_save_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/transcri
 cycle = 0
 save_threshold = 100
 
-def promo_request(sequence, similarity = 8, id_con = 171055014000):
+def promo_request(sequence, similarity = 12, id_con = 171055014000):
     url = 'https://alggen.lsi.upc.es/cgi-bin/promo_v3/promo/promo.cgi'
     data = {
         'Dissim': f'{similarity}',
@@ -25,6 +25,7 @@ def promo_request(sequence, similarity = 8, id_con = 171055014000):
         'B1': 'Submit'
     }
     response = requests.post(url, files=data)
+    print(response.status_code)
     return response.text
 
 def save(factor_save_path):
@@ -37,6 +38,7 @@ responses = []
 with open(promoter_abs_path, 'r') as file:
     lines = file.readlines()
     for i, line in enumerate(lines):
+        if(i <= 1799): continue
         if(i % 2 == 0):
             placed = True
             tokens = line.strip().split()
@@ -61,12 +63,15 @@ with open(promoter_abs_path, 'r') as file:
 with open(non_promoter_abs_path, 'r') as file:
     lines = file.readlines()
     for i, line in enumerate(lines):
+        if(i < 318): continue
         cycle += 1
         sequence = line.strip()
         response = promo_request(sequence)
         responses.append({
             "request": response,
             "classification": classification_dict["NON"],
-            "index": -1
+            "index": i
         })
         if(cycle % save_threshold == 0): save(factor_save_path)
+
+save(factor_save_path)
