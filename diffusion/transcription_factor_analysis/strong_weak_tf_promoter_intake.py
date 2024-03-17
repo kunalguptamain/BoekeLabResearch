@@ -1,6 +1,8 @@
 import requests
 
 classification_dict = {
+    "ALL": 4,
+    "GENERATED": 3,
     "STRONG": 2,
     "WEAK": 1,
     "NON": 0,
@@ -8,11 +10,12 @@ classification_dict = {
 
 promoter_abs_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/strong_weak_promoters/promoter.txt"
 non_promoter_abs_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/strong_weak_promoters/non_promoter.txt"
-factor_save_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/transcription_factor_analysis/factors.txt"
+generated_promoter_abs_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/strong_weak_promoters/generated_promoters.txt"
+factor_save_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/transcription_factor_analysis/factors_7_generated.txt"
 cycle = 0
 save_threshold = 100
 
-def promo_request(sequence, similarity = 12, id_con = 171055014000):
+def promo_request(sequence, similarity = 7, id_con = 171055014000):
     url = 'https://alggen.lsi.upc.es/cgi-bin/promo_v3/promo/promo.cgi'
     data = {
         'Dissim': f'{similarity}',
@@ -38,7 +41,6 @@ responses = []
 with open(promoter_abs_path, 'r') as file:
     lines = file.readlines()
     for i, line in enumerate(lines):
-        if(i <= 1799): continue
         if(i % 2 == 0):
             placed = True
             tokens = line.strip().split()
@@ -63,13 +65,25 @@ with open(promoter_abs_path, 'r') as file:
 with open(non_promoter_abs_path, 'r') as file:
     lines = file.readlines()
     for i, line in enumerate(lines):
-        if(i < 318): continue
         cycle += 1
         sequence = line.strip()
         response = promo_request(sequence)
         responses.append({
             "request": response,
             "classification": classification_dict["NON"],
+            "index": i
+        })
+        if(cycle % save_threshold == 0): save(factor_save_path)
+
+with open(generated_promoter_abs_path, 'r') as file:
+    lines = file.readlines()
+    for i, line in enumerate(lines):
+        cycle += 1
+        sequence = line.strip()
+        response = promo_request(sequence)
+        responses.append({
+            "request": response,
+            "classification": classification_dict["GENERATED"],
             "index": i
         })
         if(cycle % save_threshold == 0): save(factor_save_path)

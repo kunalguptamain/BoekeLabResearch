@@ -1,8 +1,10 @@
 from bs4 import BeautifulSoup
 import re
 import ast
+import csv
 
-factor_save_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/transcription_factor_analysis/factors_total_12.txt"
+factor_save_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/transcription_factor_analysis/factors_7.txt"
+factor_csv_save_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/transcription_factor_analysis/factors_7.csv"
 
 with open(factor_save_path, 'r') as f:
     loaded_array = f.readlines()
@@ -35,14 +37,38 @@ def sort_factors(html, classification, net_dicts):
         net_dicts[classification][factors[count]] += 1
         net_dicts[-1][factors[count]] += 1
 
-dicts = [{}, {}, {}, {}]
+dicts = [{}, {}, {}, {}, {}]
+total = [0, 0, 0, 0, 0]
+
+classification_dict = {
+    4: "ALL",
+    3: "GENERATED",
+    2: "STRONG",
+    1: "WEAK",
+    0: "NON",
+}
 
 for i, entry in enumerate(data):
+    print(i)
     transcription_factor_response = ast.literal_eval(entry)
     html = transcription_factor_response["request"]
     classification = int(transcription_factor_response['classification'])
     sort_factors(html, classification, dicts)
-    print(i)
+    total[classification] += 1
+    total[-1] += 1
 
+print(total)
+factors = list(dicts[-1].keys())
+counts = list(dicts[-1].values())
 
+sorted_indices = sorted(range(len(counts)), key=lambda i: counts[i])
 
+sorted_factors = [factors[i] for i in sorted_indices]
+sorted_counts = [counts[i] for i in sorted_indices]
+
+with open(factor_csv_save_path, 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerow([''] + [f'{classification_dict[i]}' for i in range(len(dicts))])
+    for key in sorted_factors:
+        row = [key] + [d.get(key, 0) / total[i] for i, d in enumerate(dicts)]
+        writer.writerow(row)
