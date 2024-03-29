@@ -1,0 +1,1 @@
+This was an initial test for generating DNA Sequences. The diffusion model was trained on several hundred binding sites, each given it's own class embedding. It was tasked on generating its own binding sites depending on the class. It sucessfully was able to create binding sites that mached the JASPAR position weight matrixes

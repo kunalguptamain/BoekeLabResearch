@@ -1,0 +1,1 @@
+The model here was trained on hundreds of sequences that bind to a specific binding site. Each binding site was given its own class. It was sucessfully able to generate sequences with the correct PWM.

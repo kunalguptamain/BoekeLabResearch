@@ -1,0 +1,1 @@
+The model was trained on hundreds of promoters 500 upstream and 100 downstream of the transcription start site. Each class was of a different species. It was able to generate promoters, but they were very difficult to distinguish from random sequences.

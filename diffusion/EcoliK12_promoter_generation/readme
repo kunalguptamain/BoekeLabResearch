@@ -1,0 +1,2 @@
+The model was trained on strong, weak, and non promoters all from Ecoli K-12. The outputs and training data were then analysed with the TRANSFAC and JASPAR database to identify binding sites.
+TRANSAC was done through the PROMO API. Issue being both these database only contain eukaryote binding sites. It did prove that generated sequences much better matched (had similar binding sites (really just patterns of DNA since these motifs aren't relavant to bacteria)) with the class they were based on rather than random or non sequences.
