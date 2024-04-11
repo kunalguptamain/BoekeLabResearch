@@ -12,6 +12,8 @@ generated_promoter_abs_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusi
 factor_txt_dict_save_path = f"C:/Users/kunal/Documents/BoekeLabResearch/diffusion/data_analysis_jaspar/factors_{threshold_dissimilarity * 100}_dict.txt"
 factor_txt_total_save_path = f"C:/Users/kunal/Documents/BoekeLabResearch/diffusion/data_analysis_jaspar/factors_{threshold_dissimilarity * 100}_total.txt"
 factor_csv_save_path = f"C:/Users/kunal/Documents/BoekeLabResearch/diffusion/data_analysis_jaspar/factors_{threshold_dissimilarity * 100}.csv"
+
+
 jdb_obj = jaspardb(release='JASPAR2024')
 
 motifs = jdb_obj.fetch_motifs(
