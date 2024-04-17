@@ -19,14 +19,6 @@ motifs = jdb_obj.fetch_motifs(
     all_versions = False,
     tax_group='Vertebrates',
 )
-
-one_hot_encode_mapping = {
-    'A': [1, 0, 0, 0],
-    'C': [0, 1, 0, 0],
-    'G': [0, 0, 1, 0],
-    'T': [0, 0, 0, 1],
-}
-
 def count_single_motif(sequence, target_motif, threshold):
     pssm = target_motif.pwm.log_odds()
     search = list(pssm.search(Seq(sequence), threshold=3.0))
@@ -40,10 +32,6 @@ def get_motifs(sequence, threshold_dissimilarity, class_dict, general_dict):
         class_dict[motif.name] += count
         if motif.name not in general_dict: general_dict[motif.name] = 0
         general_dict[motif.name] += count
-
-def one_hot_encode(seq):
-    encoded = [one_hot_encode_mapping[i] for i in seq]
-    return np.array(encoded).T
 
 dicts = [{}, {}, {}, {}, {}, {}, {}]
 total = [0, 0, 0, 0, 0, 0, 0]
