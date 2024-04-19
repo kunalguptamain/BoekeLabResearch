@@ -4,6 +4,7 @@ import csv
 from Bio.Seq import Seq
 import json
 import copy
+import pandas as pd
 
 def one_hot_encode(seq, total_len):
     one_hot_encode_mapping = {
@@ -52,20 +53,83 @@ def save_obj(object, path):
 
 def generate_motif_analysis_csv(
         dicts,
-        total,
+        totals,
         class_label_dict,
         csv_save_path,
+        sort_label = None,
+        existing_csv_path = None,
     ):
+    #creating consolidated columns
+    net_labels = list(class_label_dict.values())
+    if existing_csv_path:
+        df = pd.read_csv(existing_csv_path)
+        net_labels = net_labels + list(df.columns)
+    net_labels = list(set([label for label in net_labels if label not in ["GENERAL", "Unnamed: 0"]]))
+    net_labels.sort()
+    net_labels = ["FACTOR"] + net_labels
 
-    factors = list(dicts[-1].keys())
-    counts = list(dicts[-1].values())
+    #creating consolidated rows
+    total_factors = set()
+    for d in dicts:
+        for key in d.keys():
+            total_factors.add(key)
+    if existing_csv_path:
+        for factor in list(df.iloc[:, 0]):total_factors.add(factor)
+    total_factors = list(total_factors)
 
-    sorted_indices = sorted(range(len(counts)), key=lambda i: counts[i])
-    sorted_factors = [factors[i] for i in sorted_indices]
+    #sorting factors
+    if sort_label in class_label_dict.values():
+        dict_index = list(class_label_dict.values()).index(sort_label)
+        total_factors.sort(key=lambda x: dicts[dict_index].get(x, 0), reverse=True)
+    elif existing_csv_path and sort_label in list(df.columns):
+        total_factors.sort(key=lambda x: df[df.iloc[:, 0] == x][sort_label].values[0] if x in df.iloc[:, 0].values else 0, reverse=True)
+    
+    #adding values in 
+    if existing_csv_path:
+        df.set_index(df.columns[0], inplace=True)
+    save_frame = pd.DataFrame(columns=net_labels)
+    save_frame["FACTOR"] = total_factors
+    for i, col_name in enumerate(net_labels):
+        if(col_name == "FACTOR"): continue
+        for j, factor in enumerate(total_factors):
+            if col_name in class_label_dict.values():
+                dict_index = list(class_label_dict.values()).index(col_name)
+                save_frame.loc[j, col_name] = dicts[dict_index][factor] / totals[dict_index] if factor in dicts[dict_index] else 0
+            elif existing_csv_path:
+                save_frame.loc[j, col_name] = df.loc[factor, col_name] if (factor in df.index) and (col_name in df.columns) else 0
+    
+    save_frame.to_csv(csv_save_path, index=False)
+        
 
-    with open(csv_save_path, 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([''] + [f'{class_label_dict[i]}' for i in range(len(dicts))])
-        for key in sorted_factors:
-            row = [key] + [d.get(key, 0) / total[i] for i, d in enumerate(dicts)]
-            writer.writerow(row)
+def json_load(file_path):
+    with open(file_path, 'r') as file:
+        return json.load(file)
+    
+def analyse_intake_data(threshold_dissimilarity,
+    motifs,
+    label_dict,
+    promoter_path,
+    factor_dict_save_path = "factor_dict.txt",
+    factor_total_save_path = "factor_total.txt",
+    factor_csv_save_path = "factor_csv.csv",
+    sort_label = None,
+    existing_csv_path = None,
+):
+    dicts = [{} for _ in range(len(label_dict))]
+    total = [0 for _ in range(len(label_dict))]
+
+    sequence_set = json_load(promoter_path)
+
+    i = 0
+    for sequence, label in sequence_set:
+        i += 1
+        if(i == 20): break
+        print(i)
+        if(label not in label_dict): continue
+        get_and_sort_motifs(sequence, threshold_dissimilarity, motifs, [dicts[label]])
+        total[label] += 1
+
+    save_obj(dicts, factor_dict_save_path)
+    save_obj(total, factor_total_save_path)
+
+    generate_motif_analysis_csv(dicts, total, label_dict, factor_csv_save_path, sort_label, existing_csv_path)

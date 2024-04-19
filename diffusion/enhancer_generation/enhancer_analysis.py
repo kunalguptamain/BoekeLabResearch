@@ -22,39 +22,33 @@ label_dict = {
     5: "GENERAL"
 }
 
-# jdb_obj = jaspardb(release='JASPAR2024')
+jdb_obj = jaspardb(release='JASPAR2024')
 
-# motifs = jdb_obj.fetch_motifs(
-#     collection = ['CORE'],
-#     all_versions = False,
-#     tax_group='Vertebrates',
-# )
+motifs = jdb_obj.fetch_motifs(
+    collection = ['CORE'],
+    all_versions = False,
+    tax_group='Vertebrates',
+)
 
-# dicts = [{}, {}, {}, {}, {}, {}]
-# total = [0, 0, 0, 0, 0, 0]
+dicts = [{}, {}, {}, {}, {}, {}]
+total = [0, 0, 0, 0, 0, 0]
 
-# with open(promoter_abs_path) as file:
-#     sequence_set = json.load(file)
+with open(promoter_abs_path) as file:
+    sequence_set = json.load(file)
 
-# cycle = 100
-# i = 0
-# for sequence, label in sequence_set:
-#     print(i)
-#     general.get_and_sort_motifs(sequence, 2, motifs, [dicts[label], dicts[-1]])
-#     total[label] += 1
-#     total[-1] += 1
-#     i += 1
-#     if(i % cycle == 0):
-#         general.save_obj(dicts, factor_txt_dict_save_path)
-#         general.save_obj(total, factor_txt_total_save_path)
+cycle = 100
+i = 0
+for sequence, label in sequence_set:
+    print(i)
+    general.get_and_sort_motifs(sequence, 2, motifs, [dicts[label], dicts[-1]])
+    total[label] += 1
+    total[-1] += 1
+    i += 1
+    if(i % cycle == 0):
+        general.save_obj(dicts, factor_txt_dict_save_path)
+        general.save_obj(total, factor_txt_total_save_path)
 
-# general.save_obj(dicts, factor_txt_dict_save_path)
-# general.save_obj(total, factor_txt_total_save_path)
-
-with open(factor_txt_dict_save_path) as file:
-    dicts = json.load(file)
-
-with open(factor_txt_total_save_path) as file:
-    total = json.load(file)
+general.save_obj(dicts, factor_txt_dict_save_path)
+general.save_obj(total, factor_txt_total_save_path)
 
 general.generate_motif_analysis_csv(dicts, total, label_dict, factor_csv_save_path)
