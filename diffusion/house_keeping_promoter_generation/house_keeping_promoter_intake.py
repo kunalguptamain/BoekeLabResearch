@@ -1,3 +1,6 @@
+import sys
+sys.path.insert(0, r'C:/Users/kunal/Documents/BoekeLabResearch/')
+from methods.general import one_hot_encode
 import numpy as np
 from enum import Enum
 import os
@@ -56,24 +59,6 @@ for i, file_name in enumerate(os.listdir(promoter_abs_path)):
         if simplified_gene_name not in gene_name_to_sequences:
             gene_name_to_sequences[simplified_gene_name] = []
         gene_name_to_sequences[simplified_gene_name].append((sequence, file_label))
-
-def one_hot_encode(seq, total_len):
-    one_hot_encode_mapping = {
-        'A': [1, 0, 0, 0],
-        'C': [0, 1, 0, 0],
-        'G': [0, 0, 1, 0],
-        'T': [0, 0, 0, 1],
-    }
-    encoded = [one_hot_encode_mapping[i] for i in seq]
-    length = len(encoded)
-    for _ in range(total_len - length): encoded.append([0, 0, 0, 0])
-    return np.array(encoded).T
-
-# def shuffle(seq, total_len, cuts = 20, conserved = 0.4):
-#     segemnt_length = seq//len(seq)
-#     segments = [seq[i*segemnt_length: i*segemnt_length + segemnt_length] for i in range(cuts)]
-#     indexes = [i for i in range(cuts)]
-#     for i in range(conserved): indexes.remove(randrange(len(indexes)))
 
 save_data = []
 save_labels = []

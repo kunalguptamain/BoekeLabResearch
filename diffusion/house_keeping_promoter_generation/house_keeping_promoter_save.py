@@ -21,7 +21,7 @@ promoter_abs_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/house_k
 non_promoter_abs_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/house_keeping_promoter_generation/data/nonpromoter_upper.txt"
 select_promoters_human_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/house_keeping_promoter_generation/data/Housekeeping_TranscriptsHuman.csv"
 select_promoters_mouse_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/house_keeping_promoter_generation/data/Housekeeping_TranscriptsMouse.csv"
-save_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/house_keeping_promoter_generation/data/compare_sequences.txt"
+save_path = "C:/Users/kunal/Documents/BoekeLabResearch/diffusion/house_keeping_promoter_generation/data/compare_sequences_8.txt"
 
 def read_sequences(file_path):
      with open(file_path, 'r') as file:

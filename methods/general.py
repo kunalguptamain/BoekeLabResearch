@@ -2,6 +2,7 @@ from pyjaspar import jaspardb
 import numpy as np
 import csv
 from Bio.Seq import Seq
+from multiprocessing import Pool, Manager, current_process
 import json
 import copy
 import pandas as pd
@@ -38,14 +39,15 @@ def get_motifs(sequence, threshold_dissimilarity, motifs):
         return_dict[motif.name] += count
     return return_dict
         
-def get_and_sort_motifs(sequence, threshold_dissimilarity, motifs, sort_into_dicts):
+def get_and_sort_motifs(sequence, threshold_dissimilarity, motifs):
     '''
     Adds motifs collected from getmotifs() into a list of dictionaries
     '''
+    dict_r = {}
     for motif, count in get_motifs(sequence, threshold_dissimilarity, motifs).items():
-        for dict_r in sort_into_dicts:
-            if motif not in dict_r: dict_r[motif] = 0
-            dict_r[motif] += count
+        if motif not in dict_r: dict_r[motif] = 0
+        dict_r[motif] += count
+    return dict_r
 
 def save_obj(object, path):
     with open(path, 'w') as file:
@@ -105,6 +107,15 @@ def json_load(file_path):
     with open(file_path, 'r') as file:
         return json.load(file)
     
+def worker(args):
+    sequence, label, threshold_dissimilarity, motifs, label_dict, progress, lock, total = args
+    if(label not in label_dict): return
+    with lock:
+        progress.value += 1
+        print(f"Progress: {progress.value / total * 100:.2f}%")
+    factor_dict = get_and_sort_motifs(sequence, threshold_dissimilarity, motifs)
+    return label, factor_dict
+    
 def analyse_intake_data(threshold_dissimilarity,
     motifs,
     label_dict,
@@ -115,19 +126,25 @@ def analyse_intake_data(threshold_dissimilarity,
     sort_label = None,
     existing_csv_path = None,
 ):
+    
     dicts = [{} for _ in range(len(label_dict))]
     total = [0 for _ in range(len(label_dict))]
+    sequence_set = json.load(open(promoter_path))
+    with Manager() as manager:
+        progress = manager.Value('i', 0)
+        lock = manager.Lock()
+        with Pool() as pool:
+            results = pool.map(worker, \
+            [(sequence, label, threshold_dissimilarity, motifs, label_dict,\
+            progress, lock, len(sequence_set))\
+            for sequence, label in sequence_set])
 
-    sequence_set = json_load(promoter_path)
-
-    i = 0
-    for sequence, label in sequence_set:
-        i += 1
-        if(i == 20): break
-        print(i)
-        if(label not in label_dict): continue
-        get_and_sort_motifs(sequence, threshold_dissimilarity, motifs, [dicts[label]])
-        total[label] += 1
+        for label, factor_dict in results:
+            if label is not None:
+                for key in factor_dict.keys():
+                    if key in dicts[label]: dicts[label][key] += factor_dict[key]
+                    else: dicts[label][key] = factor_dict[key]
+                total[label] += 1
 
     save_obj(dicts, factor_dict_save_path)
     save_obj(total, factor_total_save_path)

@@ -24,12 +24,13 @@ motifs = jdb_obj.fetch_motifs(
     tax_group='Vertebrates',
 )
 
-general.analyse_intake_data(threshold_dissimilarity=threshold_dissimilarity,
-                            motifs=motifs,
-                            label_dict=label_dict,
-                            promoter_path=promoter_path,
-                            factor_dict_save_path=factor_dict_save_path,
-                            factor_total_save_path=factor_total_save_path,
-                            factor_csv_save_path=factor_csv_save_path,
-                            sort_label="HUMAN_CODING",
-                            existing_csv_path=existing_csv_path)
+if __name__ == "__main__":
+    general.analyse_intake_data(threshold_dissimilarity=threshold_dissimilarity,
+                                motifs=motifs,
+                                label_dict=label_dict,
+                                promoter_path=promoter_path,
+                                factor_dict_save_path=factor_dict_save_path,
+                                factor_total_save_path=factor_total_save_path,
+                                factor_csv_save_path=factor_csv_save_path,
+                                sort_label="HUMAN_CODING",
+                                existing_csv_path=existing_csv_path)
