@@ -104,7 +104,7 @@ class SequenceSet:
             universal_count=self.universal_count
         )
         with gzip.open(file_path, 'wt', encoding='utf-8') as f:
-            json.dump(data.model_dump(exclude_none=True), f, indent=4)
+            json.dump(data.model_dump(exclude_none=False), f, indent=4)
 
     def get_enum(self) -> List[str]:
         return self.dna_class_types
