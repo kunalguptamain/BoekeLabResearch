@@ -511,7 +511,7 @@ class SequenceDataset(Dataset):
         with h5py.File(data_path, 'r') as h5f:
             self.pixel_values = h5f['train_data'][:]
             self.labels = h5f['labels'][:]
-
+            
         self.pixel_values = np.expand_dims(self.pixel_values, axis=1)
         print("Data loaded successfully")
 
@@ -521,11 +521,10 @@ class SequenceDataset(Dataset):
     def __getitem__(self, idx):
         return {"pixel_values": self.pixel_values[idx], "label": self.labels[idx]}
 
-def train(model, optimizer, epochs, batch_size, data_loader, weight_save_path, device, loss_type = "huber"):
+def train(model, optimizer, epochs, batch_size, data_loader, weight_save_path, device, loss_type = "huber", accumulation_steps = 4):
     for epoch in range(epochs):
         print(epoch)
         for step, batch in enumerate(data_loader):
-            optimizer.zero_grad()
 
             batch_size = batch["pixel_values"].shape[0]
             labels = batch["label"].to(device).int()
@@ -533,16 +532,56 @@ def train(model, optimizer, epochs, batch_size, data_loader, weight_save_path, d
 
             # Algorithm 1 line 3: sample t uniformally for every example in the batch
             t = torch.randint(0, timesteps, (batch_size,), device=device).long()
-            loss = p_losses(model, batch, t, labels, loss_type=loss_type)
+            loss = p_losses(model, batch, t, labels, loss_type=loss_type) / accumulation_steps
 
             if step % 100 == 0:
                 print("Loss:", loss.item())
 
             loss.backward()
-            optimizer.step()
+
+            if (step + 1) % accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
 
     torch.save(model.state_dict(), weight_save_path)
 
 
+def generate_promoters(
+    model,
+    amount,
+    class_number,
+    sequence_shape,
+    device,
+):
+    return_sequences = []
 
+    one_hot_encode_val = ["A","C","G","T"]
+    def find_closest_key(col):
+        a = [
+            sum(abs(col - np.array([1, 0, 0, 0]))),
+            sum(abs(col - np.array([0, 1, 0, 0]))),
+            sum(abs(col - np.array([0, 0, 1, 0]))),
+            sum(abs(col - np.array([0, 0, 0, 1])))
+        ]
+        return a.index(min(a))
 
+    def normalize(col):
+        total = sum(col)
+        new = col/total
+        return [round(x) for x in new]
+    
+    samples = sample(model=model,\
+        image_size=torch.tensor(sequence_shape, device=device), \
+        class_vector = torch.tensor(np.array([class_number] * amount), device=device), \
+        batch_size=torch.tensor(amount, device=device),\
+        channels=torch.tensor(1, device=device)\
+        )
+    
+    for i in range(amount):
+        a = samples[-1][i].reshape(sequence_shape[0], sequence_shape[1])
+        a = np.apply_along_axis(normalize, 0, a).tolist()
+        result_array = np.apply_along_axis(find_closest_key, 0, a).tolist()
+        string = ''.join([one_hot_encode_val[s] for s in result_array])
+        return_sequences.append(string)
+
+    return return_sequences

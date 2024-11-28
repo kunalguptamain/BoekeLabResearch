@@ -31,6 +31,9 @@ with open(house_keeping_list_path, 'r') as file:
         gene_name = line.split(';')[1]
         house_keeping_list.append(gene_name.upper() + "_1")
 
+max_coding_non_hk = 4000
+counter = 0
+
 for record in SeqIO.parse(mouse_coding_path, "fasta"):
     gene_name: str = record.description
     sequence =  str(record.seq).upper()
@@ -38,6 +41,11 @@ for record in SeqIO.parse(mouse_coding_path, "fasta"):
     
     class_type = PromoterTypes.CODING_HK_DNA if gene_name.upper().split()[1] in house_keeping_list else PromoterTypes.CODING_NON_HK_DNA
 
+    if class_type == PromoterTypes.CODING_NON_HK_DNA:
+        counter += 1
+        if counter >= max_coding_non_hk:
+            continue
+        
     sequence_set.add_sequence(
         input_dna_type=class_type,
         sequence=sequence,
@@ -60,5 +68,5 @@ with open(mouse_junk_dna_path, "r") as file:
             sequence=line.strip()
         )
 
-sequence_set.save('C:/Users/kunal/Documents/BoekeLabResearch/PromoterResearchProject/pre_generation_sequence_set.json')
-sequence_set.save_train_data('C:/Users/kunal/Documents/BoekeLabResearch/PromoterResearchProject/processedMouseDNAData/train.h5')
+sequence_set.save('C:/Users/kunal/Documents/BoekeLabResearch/PromoterResearchProject/sequences_set_states/pre_generation_sequence_set_limited.json')
+sequence_set.save_train_data('C:/Users/kunal/Documents/BoekeLabResearch/PromoterResearchProject/processedMouseDNAData/train_limited.h5')

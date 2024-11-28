@@ -4,24 +4,61 @@ from pyjaspar import jaspardb
 from functools import partial
 from typing import List
 
-data_path = 'C:/Users/kunal/Documents/BoekeLabResearch/PromoterResearchProject/pre_generation_sequence_set.json'
+data_path = 'C:/Users/kunal/Documents/BoekeLabResearch/PromoterResearchProject/sequences_set_states/32-128post_generation_sequence_set_3_and_2.json'
 sequences = SequenceSet.from_file(data_path)
 print("loaded data")
 
 analyzer = Analyzer(sequences)
-coding_hk_query = analyzer.query_by_class("CODING_HK_DNA")
+
+generated_coding_hk_query = analyzer.query_by_class_and_generated("CODING_HK_DNA", True)
+coding_hk_query = analyzer.query_by_class_and_generated("CODING_HK_DNA", False)
 noncoding_nonhk_query = analyzer.query_by_class("NON_CODING_NON_HK_DNA")
-coding_nonhk_query = analyzer.query_by_class("CODING_NON_HK_DNA")
+generated_coding_nonhk_query = analyzer.query_by_class_and_generated("CODING_NON_HK_DNA", True)
+coding_nonhk_query = analyzer.query_by_class_and_generated("CODING_NON_HK_DNA", False)
 junk_dna_query = analyzer.query_by_class("JUNK_DNA")
 
-dual_query = coding_hk_query + junk_dna_query + noncoding_nonhk_query + coding_nonhk_query
+dual_query = coding_hk_query + junk_dna_query + noncoding_nonhk_query + coding_nonhk_query + generated_coding_hk_query + generated_coding_nonhk_query
 
-# analyzer.perform_analysis(
-#     analyzer.analyze_gc_content,
-#     dual_query
-# )
+analyzer.perform_analysis(
+    analyzer.analyze_gc_content,
+    dual_query
+)
 
 jaspar_db = jaspardb(release="JASPAR2024")
+gabpa_factor = jaspar_db.fetch_motif_by_id("MA0062.2")
+analyzer.perform_analysis(
+    analysis_func=partial(
+        analyzer.analysis_tfs,
+        motifs = [gabpa_factor],
+        threshold = 0.8,
+        input_name = "GABPA"
+    ),
+    sequences=dual_query,
+)
+
+# jaspar_db = jaspardb(release="JASPAR2024")
+# list = ["MA0158.1", "MA0594.1", "MA0650.3", "MA0650.4", "MA0911.1", "MA0911.2"]
+# hoxa_sites = [jaspar_db.fetch_motif_by_id(string) for string in list]
+# analyzer.perform_analysis(
+#     analysis_func=partial(
+#         analyzer.analysis_tfs,
+#         motifs = hoxa_sites,
+#         threshold = 0.8,
+#         input_name = "HOX"
+#     ),
+#     sequences=dual_query,
+# )
+# list = ["MA0151.1", "MA0601.1", "MA0601.2", "MA0602.1", "MA0602.2",]
+# arid_sites = [jaspar_db.fetch_motif_by_id(string) for string in list]
+# analyzer.perform_analysis(
+#     analysis_func=partial(
+#         analyzer.analysis_tfs,
+#         motifs = arid_sites,
+#         threshold = 0.8,
+#         input_name = "ARID"
+#     ),
+#     sequences=dual_query,
+# )
 # tbp_factor = jaspar_db.fetch_motif_by_id("MA0108.1")
 # analyzer.perform_analysis(
 #     analysis_func=partial(
@@ -49,25 +86,28 @@ jaspar_db = jaspardb(release="JASPAR2024")
 #     ),
 #     sequences=dual_query,
 # )
-# motif_set = FrequentMotifs()
-# motifs = {
-#     "TATA": FrequentMotifs.tata_motif,
-#     "Initiator": FrequentMotifs.initiator_motif,
-#     "CCAAT": FrequentMotifs.ccaat_motif,
-#     "GC BOX": FrequentMotifs.gc_motif,
-# }
 
-# for name, motif in motifs.items():
-#     analyzer.perform_analysis(
-#         analysis_func=partial(
-#             analyzer.analysis_tfs,
-#             motifs = [motif],
-#             threshold = 0.8,
-#             input_name = name
-#         ),
-#         sequences=dual_query,
-#     )
-# pou5f1_sox2 = jaspar_db.fetch_motif_by_id("MA0142.1")
+#-------------------------------------------------------------------
+motif_set = FrequentMotifs()
+motifs = {
+    "TATA": FrequentMotifs.tata_motif,
+    "Initiator": FrequentMotifs.initiator_motif,
+    "CCAAT": FrequentMotifs.ccaat_motif,
+    "GC BOX": FrequentMotifs.gc_motif,
+}
+
+for name, motif in motifs.items():
+    analyzer.perform_analysis(
+        analysis_func=partial(
+            analyzer.analysis_tfs,
+            motifs = [motif],
+            threshold = 0.8,
+            input_name = name
+        ),
+        sequences=dual_query,
+    )
+
+# # pou5f1_sox2 = jaspar_db.fetch_motif_by_id("MA0142.1")
 # analyzer.perform_analysis(
 #     analysis_func=partial(
 #         analyzer.analysis_tfs,
@@ -77,23 +117,19 @@ jaspar_db = jaspardb(release="JASPAR2024")
 #     ),
 #     sequences=dual_query,
 # )
-housekeeping_factors = [
-    jaspar_db.fetch_motif_by_id(factor) for factor in 
-    [
-        # "MA0095.2", "MA0095.3", #YY1
-        "MA0099.1", "MA0099.2", #JUN
-    ]
-]
-housekeeping_factors = [factor for factor in housekeeping_factors if factor]
-analyzer.perform_analysis(
-    analysis_func=partial(
-        analyzer.analysis_tfs,
-        motifs = housekeeping_factors,
-        threshold = 0.8,
-        input_name = "JUN"
-    ),
-    sequences=dual_query,
-)
+# housekeeping_factors = [
+#     jaspar_db.fetch_motif_by_id("MA1535.1")
+# ]
+# housekeeping_factors = [factor for factor in housekeeping_factors if factor]
+# analyzer.perform_analysis(
+#     analysis_func=partial(
+#         analyzer.analysis_tfs,
+#         motifs = housekeeping_factors,
+#         threshold = 0.8,
+#         input_name = "NR2C1"
+#     ),
+#     sequences=dual_query,
+# )
 
 # fm = FrequentMotifs()
 # regulartory_list = {
@@ -114,16 +150,39 @@ analyzer.perform_analysis(
 #     )
 
 
-print("finished analyzing")
+# print("finished analyzing")
 
-# for name in regulartory_list.keys():
-#     analyzer.plot_analysis(
-#         [junk_dna_query, coding_hk_query, noncoding_nonhk_query, coding_nonhk_query],
-#         [name],
-#         ["JUNK DNA", "CODING HK DNA", "NON CODING NON HK DNA", "CODING NON HK DNA"],
-#         normalize=False,
-#         reduce_noise=True
-#     )
+# analyzer.plot_analysis(
+#     [junk_dna_query, coding_hk_query, noncoding_nonhk_query, coding_nonhk_query],
+#     ["GC Content"],
+#     ["JUNK DNA", "CODING HK DNA", "NON CODING NON HK DNA", "CODING NON HK DNA"],
+#     normalize=False,
+#     reduce_noise=True
+# )
+
+# analyzer.plot_analysis(
+#     [junk_dna_query, coding_hk_query, noncoding_nonhk_query, coding_nonhk_query],
+#     ["GABPA"],
+#     ["JUNK DNA", "CODING HK DNA", "NON CODING NON HK DNA", "CODING NON HK DNA"],
+#     normalize=False,
+#     reduce_noise=True
+# )
+
+# analyzer.plot_analysis(
+#     [junk_dna_query, coding_hk_query, noncoding_nonhk_query, coding_nonhk_query],
+#     ["Initiator"],
+#     ["JUNK DNA", "CODING HK DNA", "NON CODING NON HK DNA", "CODING NON HK DNA"],
+#     normalize=False,
+#     reduce_noise=True
+# )
+
+# analyzer.plot_analysis(
+#     [junk_dna_query, coding_hk_query, noncoding_nonhk_query, coding_nonhk_query],
+#     ["TATA"],
+#     ["JUNK DNA", "CODING HK DNA", "NON CODING NON HK DNA", "CODING NON HK DNA"],
+#     normalize=False,
+#     reduce_noise=True
+# )
 
 # analyzer.plot_analysis(
 #     [junk_dna_query, coding_hk_query, noncoding_nonhk_query, coding_nonhk_query],
@@ -134,22 +193,88 @@ print("finished analyzing")
 # )
 
 
-analyzer.plot_analysis(
-    [junk_dna_query, coding_hk_query, noncoding_nonhk_query, coding_nonhk_query],
-    ["JUN"],
-    ["JUNK DNA", "CODING HK DNA", "NON CODING NON HK DNA", "CODING NON HK DNA"],
-    normalize=False,
-    reduce_noise=True,
-)
+# analyzer.plot_analysis(
+#     [junk_dna_query, coding_hk_query, generated_coding_hk_query],
+#     ["GABPA"],
+#     ["JUNK DNA", "CODING HK DNA", "GENERATED CODING HK DNA"],
+#     normalize=False,
+#     reduce_noise=False,
+# )
+
+
+# analyzer.plot_analysis(
+#     [junk_dna_query, coding_hk_query, generated_coding_hk_query],
+#     ["GC Content"],
+#     ["JUNK DNA", "CODING HK DNA", "GENERATED CODING HK DNA"],
+#     normalize=False,
+#     reduce_noise=True,
+# )
+
 
 # for name in motifs.keys():
 #     analyzer.plot_analysis(
-#         [junk_dna_query, coding_hk_query, noncoding_nonhk_query, coding_nonhk_query],
+#         [junk_dna_query, coding_hk_query, generated_coding_hk_query],
 #         [name],
-#         ["JUNK DNA", "CODING HK DNA", "NON CODING NON HK DNA", "CODING NON HK DNA"],
+#         ["JUNK DNA", "CODING HK DNA", "GENERATED CODING HK DNA"],
 #         normalize=False,
 #         reduce_noise=True
 #     )
+
+plotValuesList = {
+    "nonhk": [junk_dna_query, coding_nonhk_query, generated_coding_nonhk_query],
+    "hk": [junk_dna_query, coding_hk_query, generated_coding_hk_query],
+}
+labelsList = {
+    "nonhk": ["JUNK DNA", "CODING NON HK DNA", "GENERATED CODING NON HK DNA"],
+    "hk": ["JUNK DNA", "CODING HK DNA", "GENERATED CODING HK DNA"]
+}
+
+plotValues = plotValuesList["hk"]
+labels = labelsList["hk"]
+
+analyzer.plot_analysis(
+    plotValues,
+    ["GABPA"],
+    labels,
+    normalize=False,
+    reduce_noise=True,
+)
+analyzer.plot_analysis(
+    plotValues,
+    ["GC Content"],
+    labels,
+    normalize=False,
+    reduce_noise=True,
+)
+for name in motifs.keys():
+    analyzer.plot_analysis(
+        plotValues,
+        [name],
+        labels,
+        normalize=False,
+        reduce_noise=True
+    )
+
+
+# analyzer.plot_analysis(
+#     plotValues,
+#     ["GC Content"],
+#     labels,
+#     normalize=False,
+#     reduce_noise=True,
+# )
+
+
+# for name in motifs.keys():
+#     analyzer.plot_analysis(
+#         plotValues,
+#         [name],
+#         labels,
+#         normalize=False,
+#         reduce_noise=True
+#     )
+
+
 
 # analyzer.plot_analysis(
 #     [junk_dna_query, coding_hk_query, noncoding_nonhk_query, coding_nonhk_query],

@@ -5,7 +5,7 @@ from torch.optim import Adam
 
 data_path = "C:/Users/kunal/Documents/BoekeLabResearch/PromoterResearchProject/processedMouseDNAData/train.h5"
 
-batch_size = 1024
+batch_size = 16
 device = "cuda" if torch.cuda.is_available() else "cpu"
 image_size = (4, 1024)
 channels = 1
@@ -18,8 +18,8 @@ model = Unet(
     dim=image_size,
     channels=channels,
     num_classes=num_classes,
-    filter_mults=(1, 2, 4, 8, 16),
-    filters = 64,
+    filter_mults=(1),
+    filters = 8,
 )
 model.to(device)
 

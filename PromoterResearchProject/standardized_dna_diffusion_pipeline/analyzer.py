@@ -116,6 +116,12 @@ class Analyzer:
         Queries sequences by their class type.
         """
         return self.query(lambda seq: seq.dna_type == class_type)
+    
+    def query_by_class_and_generated(self, class_type: str, is_generated: bool) -> List[SequenceSet.Sequence]:
+        """
+        Queries sequences by their class type.
+        """
+        return self.query(lambda seq: seq.dna_type == class_type and seq.is_generated == is_generated)
 
     def query_by_id(self, sequence_id: int) -> List[SequenceSet.Sequence]:
         """
@@ -213,11 +219,17 @@ class Analyzer:
         if len(queries) != len(query_labels):
             raise ValueError("The number of query groups must match the number of query labels.")
 
-        # Prepare a base color for each query using a colormap
-        base_colors = plt.cm.viridis(np.linspace(0, 1, len(queries)))
+        # Create a consistent color map for query-attribute pairs
+        query_attribute_pairs = [(label, attr) for label in query_labels for attr in attributes]
+        color_map = {pair: plt.cm.tab20(i % 20) for i, pair in enumerate(query_attribute_pairs)}
+
+        # Dictionary to track plotted labels for consistent legend ordering
+        plotted_labels = set()
 
         # Loop over each query group (list of sequences)
         for query_idx, sequences in enumerate(queries):
+            query_label = query_labels[query_idx]
+
             # Initialize a dictionary to store cumulative magnitudes for each attribute in this query group
             attribute_magnitude_sums = {attr: np.zeros(total_positions) for attr in attributes}
 
@@ -247,26 +259,28 @@ class Analyzer:
                 if reduce_noise:
                     attribute_magnitude_sums[attr] = self.smooth_series(attribute_magnitude_sums[attr], window=smoothing_window)
 
-            # Plot each attribute's magnitudes for this query group
-            for attr_idx, (attr, magnitudes) in enumerate(attribute_magnitude_sums.items()):
-                # Slightly modify the base color for different attributes
-                color = np.array(to_rgba(base_colors[query_idx]))  # Get the base color for the query
-                color[0] = min(1, color[0] + 0.2 * attr_idx)  # Adjust the red channel slightly
-                color[1] = min(1, color[1] + 0.2 * attr_idx)  # Adjust the green channel slightly
-                color[2] = min(1, color[2] + 0.2 * attr_idx)  # Adjust the blue channel slightly
-                
-                # Plot the results
-                plt.plot(
-                    range(total_positions),
-                    magnitudes,
-                    label=f"{query_labels[query_idx]} - {attr} ({'normalized' if normalize else 'averaged'})",
-                    color=color
-                )
+                # Plot each attribute's magnitudes for this query group
+                label = f"{query_label} - {attr} ({'normalized' if normalize else 'averaged'})"
+                if label not in plotted_labels:
+                    plt.plot(
+                        range(total_positions),
+                        attribute_magnitude_sums[attr],
+                        label=label,
+                        color=color_map[(query_label, attr)]
+                    )
+                    plotted_labels.add(label)
+                else:
+                    plt.plot(
+                        range(total_positions),
+                        attribute_magnitude_sums[attr],
+                        color=color_map[(query_label, attr)]
+                    )
 
         plt.xlabel("Position")
         plt.ylabel("Magnitude")
         plt.legend()
         plt.show()
+
     def smooth_series(self, data: np.ndarray, window: int = 5) -> np.ndarray:
         """
         Applies a moving average to smooth the data, preserving the min and max values.

@@ -55,6 +55,11 @@ class SequenceSet:
         instance.length = len(instance.sequences)
         return instance
 
+    def add_class_type(
+        self,
+        class_type: str
+    ):
+        self.dna_class_types.append(class_type)
 
     def add_sequence(
         self,
@@ -115,6 +120,7 @@ class SequenceSet:
     def save_train_data(self, file_path):
         # Create a mapping from DNA class types to integer labels
         dna_class_mapping = {dna_class: idx for idx, dna_class in enumerate(self.dna_class_types)}
+        print(dna_class_mapping)
 
         # Initialize arrays for storing the one-hot encoded sequences and labels
         train_data = np.array([seq.one_hot_encoding for seq in self.sequences], dtype=np.float32)
