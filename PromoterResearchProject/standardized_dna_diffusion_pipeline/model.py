@@ -1,13 +1,15 @@
 import math
 from inspect import isfunction
 from functools import partial
-
+import pytorch_lightning as pl
+from pytorch_lightning import Trainer
+import torch
 # %matplotlib inline
 from tqdm.auto import tqdm
 from einops import rearrange, reduce
 from einops.layers.torch import Rearrange
+import multiprocessing
 
-import torch
 from torch import nn, einsum
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
@@ -16,6 +18,124 @@ import h5py
 import math
 import os
 import numpy as np
+import torch._dynamo
+
+def linear_beta_schedule(timesteps):
+    beta_start = 0.0001
+    beta_end = 0.02
+    return torch.linspace(beta_start, beta_end, timesteps)
+
+timesteps = 300
+
+# define beta schedule
+betas = linear_beta_schedule(timesteps=timesteps)
+
+# define alphas
+alphas = 1. - betas
+alphas_cumprod = torch.cumprod(alphas, axis=0)
+alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
+sqrt_recip_alphas = torch.sqrt(1.0 / alphas)
+
+# calculations for diffusion q(x_t | x_{t-1}) and others
+sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
+sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod)
+
+# calculations for posterior q(x_{t-1} | x_t, x_0)
+posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
+
+def extract(a, t, x_shape):
+    batch_size = t.shape[0]
+    out = a.gather(-1, t.cpu())
+    return out.reshape(batch_size, *((1,) * (len(x_shape) - 1))).to(t.device)
+
+# forward diffusion (using the nice property)
+def q_sample(x_start, t, noise=None):
+    if noise is None:
+        noise = torch.randn_like(x_start)
+
+    sqrt_alphas_cumprod_t = extract(sqrt_alphas_cumprod, t, x_start.shape)
+    sqrt_one_minus_alphas_cumprod_t = extract(
+        sqrt_one_minus_alphas_cumprod, t, x_start.shape
+    )
+
+    return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
+
+reverse_transform = Compose([
+     Lambda(lambda t: (t + 1) / 2),
+     Lambda(lambda t: t.permute(1, 2, 0)), # CHW to HWC
+     Lambda(lambda t: t * 255.),
+     Lambda(lambda t: t.numpy().astype(np.uint8)),
+     ToPILImage(),
+])
+
+def get_noisy_image(x_start, t):
+  # add noise
+  x_noisy = q_sample(x_start, t=t)
+
+  # turn back into PIL image
+  noisy_image = reverse_transform(x_noisy.squeeze())
+
+  return noisy_image
+
+def p_losses(denoise_model, x_start, t, labels, noise=None, loss_type="l1"):
+    if noise is None:
+        noise = torch.randn_like(x_start)
+
+    x_noisy = q_sample(x_start=x_start, t=t, noise=noise)
+    predicted_noise = denoise_model(x_noisy, t, labels)
+
+    if loss_type == 'l1':
+        loss = F.l1_loss(noise, predicted_noise)
+    elif loss_type == 'l2':
+        loss = F.mse_loss(noise, predicted_noise)
+    elif loss_type == "huber":
+        loss = F.smooth_l1_loss(noise, predicted_noise)
+    else:
+        raise NotImplementedError()
+
+    return loss
+
+@torch.no_grad()
+def p_sample(model, x, class_vector, t, t_index):
+    betas_t = extract(betas, t, x.shape)
+    sqrt_one_minus_alphas_cumprod_t = extract(
+        sqrt_one_minus_alphas_cumprod, t, x.shape
+    )
+    sqrt_recip_alphas_t = extract(sqrt_recip_alphas, t, x.shape)
+
+    # Equation 11 in the paper
+    # Use our model (noise predictor) to predict the mean
+    pred = model(x, t, class_vector)
+    model_mean = sqrt_recip_alphas_t * (
+        x - betas_t *  pred/ sqrt_one_minus_alphas_cumprod_t
+    )
+
+    if t_index == 0:
+        return model_mean
+    else:
+        posterior_variance_t = extract(posterior_variance, t, x.shape)
+        noise = torch.randn_like(x)
+        # Algorithm 2 line 4:
+        return model_mean + torch.sqrt(posterior_variance_t) * noise
+
+# Algorithm 2 (including returning all images)
+@torch.no_grad()
+def p_sample_loop(model, shape, class_vector):
+    device = next(model.parameters()).device
+
+    b = shape[0]
+    # start from pure noise (for each example in the batch)
+    img = torch.randn(shape, device=device)
+    imgs = []
+
+    for i in tqdm(reversed(range(0, timesteps)), desc='sampling loop time step', total=timesteps):
+        img = p_sample(model, img, class_vector, torch.full((b,), i, device=device, dtype=torch.long), i)
+        imgs.append(img.cpu().numpy())
+    return imgs
+
+@torch.no_grad()
+def sample(model, image_size, class_vector, batch_size=16, channels=3):
+    return p_sample_loop(model, shape=(batch_size, channels, image_size[0], image_size[1]), class_vector=class_vector)
 
 
 def exists(x):
@@ -57,6 +177,7 @@ def Downsample(dim, dim_out=None, height=4):
     # No More Strided Convolutions or Pooling
     P1 = 2 if height > 1 else 1
     P2 = 2
+
     return nn.Sequential(
         Rearrange("b c (h p1) (w p2) -> b (c p1 p2) h w", p1=P1, p2=P2),
         nn.Conv2d(dim * (P1 * P2), default(dim_out, dim), 1),
@@ -85,11 +206,15 @@ class WeightStandardizedConv2d(nn.Conv2d):
     def forward(self, x):
         eps = 1e-5 if x.dtype == torch.float32 else 1e-3
 
+        # Calculate mean and variance over the desired dimensions without functools.partial
         weight = self.weight
-        mean = reduce(weight, "o ... -> o 1 1 1", "mean")
-        var = reduce(weight, "o ... -> o 1 1 1", partial(torch.var, unbiased=False))
-        normalized_weight = (weight - mean) / (var + eps).rsqrt()
+        mean = weight.mean(dim=(1, 2, 3), keepdim=True)  # Compute mean across spatial dimensions
+        var = weight.var(dim=(1, 2, 3), unbiased=False, keepdim=True)  # Compute variance directly
 
+        # Normalize weight
+        normalized_weight = (weight - mean) / torch.sqrt(var + eps)
+
+        # Perform the convolution with normalized weights
         return F.conv2d(
             x,
             normalized_weight,
@@ -218,12 +343,11 @@ class ClassConditioning(nn.Module):
             nn.SiLU(),
             nn.Unflatten(1, (num_channels, out_dims[0], out_dims[1]))
         )
-
     def forward(self, x):
         return self.block(x)
 
 #Change to tuple
-class Unet(nn.Module):
+class Unet(pl.LightningModule):
     def __init__(
         self,
         dim,
@@ -240,6 +364,7 @@ class Unet(nn.Module):
         super().__init__()
 
         # determine dimensions
+        self.dim = dim
         self.channels = channels #1
         self.self_condition = self_condition
         input_channels = channels * (2 if self_condition else 1) #1
@@ -274,6 +399,7 @@ class Unet(nn.Module):
 
         for ind, (filters_in, filters_out) in enumerate(in_out):
             print(now_res)
+            print(filters_out)
             is_last = ind >= (num_resolutions - 1)
             if(ind == 3): print(filters_in, filters_out, now_res[0])
             self.downs.append(
@@ -303,6 +429,7 @@ class Unet(nn.Module):
             is_last = ind == (len(in_out) - 1)
             print(now_res)
             print((now_res[0], now_res[1]))
+            print(filters_out)
             self.ups.append(
                 nn.ModuleList(
                     [
@@ -324,9 +451,11 @@ class Unet(nn.Module):
         self.final_conv = nn.Conv2d(self.filters, self.out_dim, 1)
 
     def forward(self, x, time, class_vector, x_self_cond=None, prints = False):
+
         if self.self_condition:
             x_self_cond = default(x_self_cond, lambda: torch.zeros_like(x))
             x = torch.cat((x_self_cond, x), dim=1)
+
         x = self.init_conv(x)
         r = x.clone()
 
@@ -367,183 +496,24 @@ class Unet(nn.Module):
         prints = False
         return self.final_conv(x)
 
-def cosine_beta_schedule(timesteps, s=0.008):
-    """
-    cosine schedule as proposed in https://arxiv.org/abs/2102.09672
-    """
-    steps = timesteps + 1
-    x = torch.linspace(0, timesteps, steps)
-    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
-    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
-    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
-    return torch.clip(betas, 0.0001, 0.9999)
+    def training_step(self, batch, batch_idx):
+      batch_size = batch["pixel_values"].shape[0]
+      labels = batch["label"]
+      batch = batch["pixel_values"]
+      t = torch.randint(0, timesteps, (batch_size,),).long()
+      loss = p_losses(self.model, batch, t, labels, loss_type="huber")
+      self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+      return loss
 
-def linear_beta_schedule(timesteps):
-    beta_start = 0.0001
-    beta_end = 0.02
-    return torch.linspace(beta_start, beta_end, timesteps)
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(self.parameters(), lr=4e-5)
+        return optimizer
 
-def quadratic_beta_schedule(timesteps):
-    beta_start = 0.0001
-    beta_end = 0.02
-    return torch.linspace(beta_start**0.5, beta_end**0.5, timesteps) ** 2
+    def q_sample(self, x_start, t, noise):
+        return x_start + noise * torch.sqrt(self.betas[t])
 
-def sigmoid_beta_schedule(timesteps):
-    beta_start = 0.0001
-    beta_end = 0.02
-    betas = torch.linspace(-6, 6, timesteps)
-    return torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
-
-timesteps = 300
-
-# define beta schedule
-betas = linear_beta_schedule(timesteps=timesteps)
-
-# define alphas
-alphas = 1. - betas
-alphas_cumprod = torch.cumprod(alphas, axis=0)
-alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
-sqrt_recip_alphas = torch.sqrt(1.0 / alphas)
-
-# calculations for diffusion q(x_t | x_{t-1}) and others
-sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
-sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod)
-
-# calculations for posterior q(x_{t-1} | x_t, x_0)
-posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
-
-def extract(a, t, x_shape):
-    batch_size = t.shape[0]
-    out = a.gather(-1, t.cpu())
-    return out.reshape(batch_size, *((1,) * (len(x_shape) - 1))).to(t.device)
-
-# forward diffusion (using the nice property)
-def q_sample(x_start, t, noise=None):
-    if noise is None:
-        noise = torch.randn_like(x_start)
-
-    sqrt_alphas_cumprod_t = extract(sqrt_alphas_cumprod, t, x_start.shape)
-    sqrt_one_minus_alphas_cumprod_t = extract(
-        sqrt_one_minus_alphas_cumprod, t, x_start.shape
-    )
-
-    return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
-
-reverse_transform = Compose([
-     Lambda(lambda t: (t + 1) / 2),
-     Lambda(lambda t: t.permute(1, 2, 0)), # CHW to HWC
-     Lambda(lambda t: t * 255.),
-     Lambda(lambda t: t.numpy().astype(np.uint8)),
-     ToPILImage(),
-])
-
-def get_noisy_image(x_start, t):
-  # add noise
-  x_noisy = q_sample(x_start, t=t)
-
-  # turn back into PIL image
-  noisy_image = reverse_transform(x_noisy.squeeze())
-
-  return noisy_image
-
-def p_losses(denoise_model, x_start, t, labels, noise=None, loss_type="l1"):
-    if noise is None:
-        noise = torch.randn_like(x_start)
-
-    x_noisy = q_sample(x_start=x_start, t=t, noise=noise)
-    predicted_noise = denoise_model(x_noisy, t, labels)
-
-    if loss_type == 'l1':
-        loss = F.l1_loss(noise, predicted_noise)
-    elif loss_type == 'l2':
-        loss = F.mse_loss(noise, predicted_noise)
-    elif loss_type == "huber":
-        loss = F.smooth_l1_loss(noise, predicted_noise)
-    else:
-        raise NotImplementedError()
-
-    return loss
-
-@torch.no_grad()
-def p_sample(model, x, class_vector, t, t_index):
-    betas_t = extract(betas, t, x.shape)
-    sqrt_one_minus_alphas_cumprod_t = extract(
-        sqrt_one_minus_alphas_cumprod, t, x.shape
-    )
-    sqrt_recip_alphas_t = extract(sqrt_recip_alphas, t, x.shape)
-
-    # Equation 11 in the paper
-    # Use our model (noise predictor) to predict the mean
-    model_mean = sqrt_recip_alphas_t * (
-        x - betas_t * model(x, t, class_vector) / sqrt_one_minus_alphas_cumprod_t
-    )
-
-    if t_index == 0:
-        return model_mean
-    else:
-        posterior_variance_t = extract(posterior_variance, t, x.shape)
-        noise = torch.randn_like(x)
-        # Algorithm 2 line 4:
-        return model_mean + torch.sqrt(posterior_variance_t) * noise
-
-# Algorithm 2 (including returning all images)
-@torch.no_grad()
-def p_sample_loop(model, shape, class_vector):
-    device = next(model.parameters()).device
-
-    b = shape[0]
-    # start from pure noise (for each example in the batch)
-    img = torch.randn(shape, device=device)
-    imgs = []
-
-    for i in tqdm(reversed(range(0, timesteps)), desc='sampling loop time step', total=timesteps):
-        img = p_sample(model, img, class_vector, torch.full((b,), i, device=device, dtype=torch.long), i)
-        imgs.append(img.cpu().numpy())
-    return imgs
-
-@torch.no_grad()
-def sample(model, image_size, class_vector, batch_size=16, channels=3):
-    return p_sample_loop(model, shape=(batch_size, channels, image_size[0], image_size[1]), class_vector=class_vector)
-
-class SequenceDataset(Dataset):
-    def __init__(self, data_path):
-
-        with h5py.File(data_path, 'r') as h5f:
-            self.pixel_values = h5f['train_data'][:]
-            self.labels = h5f['labels'][:]
-            
-        self.pixel_values = np.expand_dims(self.pixel_values, axis=1)
-        print("Data loaded successfully")
-
-    def __len__(self):
-        return len(self.pixel_values)
-
-    def __getitem__(self, idx):
-        return {"pixel_values": self.pixel_values[idx], "label": self.labels[idx]}
-
-def train(model, optimizer, epochs, batch_size, data_loader, weight_save_path, device, loss_type = "huber", accumulation_steps = 4):
-    for epoch in range(epochs):
-        print(epoch)
-        for step, batch in enumerate(data_loader):
-
-            batch_size = batch["pixel_values"].shape[0]
-            labels = batch["label"].to(device).int()
-            batch = batch["pixel_values"].to(device).float()
-
-            # Algorithm 1 line 3: sample t uniformally for every example in the batch
-            t = torch.randint(0, timesteps, (batch_size,), device=device).long()
-            loss = p_losses(model, batch, t, labels, loss_type=loss_type) / accumulation_steps
-
-            if step % 100 == 0:
-                print("Loss:", loss.item())
-
-            loss.backward()
-
-            if (step + 1) % accumulation_steps == 0:
-                optimizer.step()
-                optimizer.zero_grad()
-
-    torch.save(model.state_dict(), weight_save_path)
+    def extract(self, a, t, shape):
+        return a[t].expand(shape)
 
 
 def generate_promoters(
@@ -569,14 +539,16 @@ def generate_promoters(
         total = sum(col)
         new = col/total
         return [round(x) for x in new]
-    
+
     samples = sample(model=model,\
         image_size=torch.tensor(sequence_shape, device=device), \
         class_vector = torch.tensor(np.array([class_number] * amount), device=device), \
         batch_size=torch.tensor(amount, device=device),\
         channels=torch.tensor(1, device=device)\
         )
-    
+
+    plt.imshow(np.apply_along_axis(normalize, 0, samples[-1][0].reshape(sequence_shape[0], sequence_shape[1]))[:,900:])
+
     for i in range(amount):
         a = samples[-1][i].reshape(sequence_shape[0], sequence_shape[1])
         a = np.apply_along_axis(normalize, 0, a).tolist()
@@ -585,3 +557,19 @@ def generate_promoters(
         return_sequences.append(string)
 
     return return_sequences
+
+class SequenceDataset(Dataset):
+    def __init__(self, data_path):
+
+        with h5py.File(data_path, 'r') as h5f:
+            self.pixel_values = h5f['train_data'][:]
+            self.labels = h5f['labels'][:]
+
+        self.pixel_values = np.expand_dims(self.pixel_values, axis=1)
+        print("Data loaded successfully")
+
+    def __len__(self):
+        return len(self.pixel_values)
+
+    def __getitem__(self, idx):
+        return {"pixel_values": self.pixel_values[idx], "label": self.labels[idx]}
